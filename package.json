@@ -2,10 +2,13 @@
   "name": "winston-papertrail",
   "description": "A Papertrail transport for winston",
   "version": "1.0.5",
-  "author": "Ken Perkins <ken.perkins@rackspace.com>",
+  "contributors": [
+    "Ken Perkins <ken.perkins@rackspace.com>",
+    "Jeppe Enslev <jev@umwelt.dk> (https://github.com/Enslev)"
+  ],
   "repository": {
     "type": "git",
-    "url": "http://github.com/kenperkins/winston-papertrail.git"
+    "url": "https://github.com/umweltdk/winston-papertrail.git"
   },
   "keywords": [
     "logging",
@@ -16,12 +19,14 @@
     "logs"
   ],
   "devDependencies": {
+    "@types/node": "^12.7.12",
+    "@types/triple-beam": "^1.3.0",
     "eslint": "^5.11.1",
     "mocha": "^2.0.1",
-    "should": "^4.3.0",
-    "winston": ">=0.6.x"
+    "should": "^4.3.0"
   },
   "dependencies": {
+    "winston": ">=0.6.x",
     "glossy": "^0.1.7"
   },
   "peerDependencies": {
@@ -30,7 +35,8 @@
   "main": "./lib/winston-papertrail",
   "scripts": {
     "lint": "eslint .",
-    "test": "mocha test/*-test.js --spec"
+	"test": "mocha test/*-test.js --spec",
+	"build": "tsc"
   },
   "engines": {
     "node": ">= 0.4.0"
