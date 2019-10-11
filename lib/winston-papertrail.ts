@@ -1,11 +1,11 @@
 import { EventEmitter } from "events";
 import { SPLAT } from 'triple-beam';
-import * as Transport from 'winston-transport';
-import * as glossy from 'glossy';
-import * as net from 'net';
-import * as os from 'os';
-import * as tls from 'tls';
+import TransportStream from 'winston-transport';
+import { Produce } from 'glossy';
 import { inspect } from 'util';
+import { hostname } from "os";
+import { createConnection } from "net";
+import { connect } from "tls";
 
 /**
  * winston-papertrail.js
@@ -32,14 +32,14 @@ interface IconnectionOptions {
 	loggingEnabled?: boolean,
 }
 
-interface ItransportOptions extends Transport.TransportStreamOptions {
-	inlineMeta?: boolean;
-	colorize?: boolean;
-	program?: string;
-	facility?: string;
-	hostname?: string;
-	depth?: any;
-	levels?: {
+interface ItransportOptions {
+	inlineMeta: boolean;
+	colorize: boolean;
+	program: string;
+	facility: string;
+	hostname: string;
+	depth: any;
+	levels: {
 		silly: number;
 		debug: number;
 		verbose: number;
@@ -47,7 +47,7 @@ interface ItransportOptions extends Transport.TransportStreamOptions {
 		warn: number;
 		error: number;
 	};
-	logFormat?: (level: any, message: any) => string;
+	logFormat: (level: any, message: any) => string;
 };
 
 export class PapertrailConnection extends EventEmitter {
@@ -106,15 +106,15 @@ export class PapertrailConnection extends EventEmitter {
 
 		try {
 			if (this.options.disableTls) {
-				this.stream = net.createConnection(this.options.port, this.options.host, this.onConnected.bind(this));
+				this.stream = createConnection(this.options.port, this.options.host, this.onConnected.bind(this));
 				this.stream.setKeepAlive(true, KEEPALIVE_INTERVAL);
 				this.stream.once('error', this.onErrored.bind(this));
 				this.stream.once('end', this.connect.bind(this));
 			} else {
-				this.socket = net.createConnection(this.options.port, this.options.host, () => {
+				this.socket = createConnection(this.options.port, this.options.host, () => {
 					this.socket.setKeepAlive(true, KEEPALIVE_INTERVAL);
 
-					this.stream = tls.connect({
+					this.stream = connect({
 						socket: this.socket,
 						rejectUnauthorized: false,
 					}, this.onConnected.bind(this));
@@ -239,21 +239,20 @@ export class PapertrailConnection extends EventEmitter {
 	}
 }
 
-export class PapertrailTransport extends Transport {
-	connection: PapertrailConnection;
-	options: ItransportOptions;
-	producer: any;
+export class PapertrailTransport extends TransportStream {
+	private connection: PapertrailConnection;
+	private options: ItransportOptions;
+	private producer: Produce;
 
-	constructor(connection: PapertrailConnection, options: ItransportOptions) {
+	constructor(connection: PapertrailConnection, options: (Partial<ItransportOptions> & TransportStream.TransportStreamOptions)) {
 		super(options);
 
-		const syslogProducer = glossy.Produce;
 		const DEFAULT_OPTIONS = {
 			inlineMeta: false,
 			colorize: false,
 			program: 'default',
 			facility: 'daemon',
-			hostname: os.hostname(),
+			hostname: hostname(),
 			depth: null,
 			levels: {
 				silly: 7,
@@ -271,7 +270,7 @@ export class PapertrailTransport extends Transport {
 		this.connection = connection;
 
 		this.options = Object.assign({}, DEFAULT_OPTIONS, options);
-		this.producer = new syslogProducer({ facility: this.options.facility });
+		this.producer = new Produce({ facility: this.options.facility });
 	}
 
 	log(info, callback) {
@@ -307,8 +306,8 @@ export class PapertrailTransport extends Transport {
 		this.sendMessage(level, output, callback);
 	}
 
-	sendMessage(level, message, callback) {
-		let lines = [];
+	private sendMessage(level, message, callback) {
+		let lines: string[] = [];
 		let msg = '';
 		let gap = '';
 
