@@ -1,3 +1,12 @@
+import { EventEmitter } from "events";
+import { SPLAT } from 'triple-beam';
+import * as Transport from 'winston-transport';
+import * as glossy from 'glossy';
+import * as net from 'net';
+import * as os from 'os';
+import * as tls from 'tls';
+import { inspect } from 'util';
+
 /**
  * winston-papertrail.js
  *
@@ -5,20 +14,58 @@
  * https://papertrailapp.com/
  *
  * Based on a previous version (1.x) by Ken Perkins.
+ *
+ * Transcribed to typescript by Umwelt A/S
  */
-
-const Transport = require('winston-transport');
-const syslogProducer = require('glossy').Produce;
-const net = require('net');
-const os = require('os');
-const tls = require('tls');
-const util = require('util');
-const { EventEmitter } = require('events');
 
 const KEEPALIVE_INTERVAL = 15 * 1000;
 
-class PapertrailConnection extends EventEmitter {
-	constructor(options) {
+interface IconnectionOptions {
+	host: string,
+	port: number,
+	attemptsBeforeDecay?: any;
+	connectionDelay?: any;
+	maxDelayBetweenConnections?: number,
+	maximumAttempts?: number,
+	disableTls?: boolean,
+	flushOnClose?: boolean,
+	loggingEnabled?: boolean,
+}
+
+interface ItransportOptions extends Transport.TransportStreamOptions {
+	inlineMeta?: boolean;
+	colorize?: boolean;
+	program?: string;
+	facility?: string;
+	hostname?: string;
+	depth?: any;
+	levels?: {
+		silly: number;
+		debug: number;
+		verbose: number;
+		info: number;
+		warn: number;
+		error: number;
+	};
+	logFormat?: (level: any, message: any) => string;
+};
+
+export class PapertrailConnection extends EventEmitter {
+	private options: any;
+	private connectionDelay: any;
+	private currentRetries: number;
+	private totalRetries: number;
+	private loggingEnabled: boolean;
+	private _shutdown: boolean;
+	private deferredQueue: any[];
+	private deferredQueueLength: number;
+	private _erroring: any;
+	private stream: any;
+	private socket: any;
+	private attemptsBeforeDecay: any;
+
+
+	constructor(options: IconnectionOptions) {
 		super();
 
 		const DEFAULT_OPTIONS = {
@@ -28,18 +75,15 @@ class PapertrailConnection extends EventEmitter {
 			maximumAttempts: 25,
 			disableTls: false,
 			flushOnClose: true,
+			loggingEnabled: false,
 		};
 
 		this.options = Object.assign({}, DEFAULT_OPTIONS, options);
 
-		if (!this.options.host || !this.options.port) {
-			throw new Error('Missing required parameters: host and port');
-		}
-
 		this.connectionDelay = this.options.connectionDelay;
 		this.currentRetries = 0;
 		this.totalRetries = 0;
-		this.loggingEnabled = true;
+		this.loggingEnabled = this.options.loggingEnabled;
 		this._shutdown = false;
 
 		/**
@@ -87,16 +131,18 @@ class PapertrailConnection extends EventEmitter {
 	}
 
 	write(text, callback) {
-		// If the stream is writable
-		if (this.stream && this.stream.writable) {
-			this.stream.write(text, callback);
-		} else {
-			// Otherwise, store it in a buffer and write it when we're connected
-			this.deferredQueue.push({
-				buffer: text,
-				callback,
-			});
-			this.deferredQueueLength++;
+		if (this.loggingEnabled) {
+			// If the stream is writable
+			if (this.stream && this.stream.writable) {
+				this.stream.write(text, callback);
+			} else {
+				// Otherwise, store it in a buffer and write it when we're connected
+				this.deferredQueue.push({
+					buffer: text,
+					callback,
+				});
+				this.deferredQueueLength++;
+			}
 		}
 	}
 
@@ -122,7 +168,6 @@ class PapertrailConnection extends EventEmitter {
 	}
 
 	onConnected() {
-		this.loggingEnabled = true;
 		this.currentRetries = 0;
 		this.totalRetries = 0;
 		this.connectionDelay = this.options.connectionDelay;
@@ -194,14 +239,15 @@ class PapertrailConnection extends EventEmitter {
 	}
 }
 
-class PapertrailTransport extends Transport {
-	/**
-	 * @param {PapertrailConnection} connection
-	 * @param options
-	 */
-	constructor(connection, options = {}) {
+export class PapertrailTransport extends Transport {
+	connection: PapertrailConnection;
+	options: ItransportOptions;
+	producer: any;
+
+	constructor(connection: PapertrailConnection, options: ItransportOptions) {
 		super(options);
 
+		const syslogProducer = glossy.Produce;
 		const DEFAULT_OPTIONS = {
 			inlineMeta: false,
 			colorize: false,
@@ -217,7 +263,7 @@ class PapertrailTransport extends Transport {
 				warn: 4,
 				error: 3,
 			},
-			logFormat: function(level, message) {
+			logFormat: function (level: string, message: string): string {
 				return level + ' ' + message;
 			},
 		};
@@ -233,26 +279,27 @@ class PapertrailTransport extends Transport {
 			this.emit('logged', info);
 		});
 
+
 		// write to Papertrail
-		const { level, message, meta } = info;
+		const { level, message } = info;
+		const meta = info[SPLAT];
 		let output = message;
 
 		if (meta) {
 			if (typeof meta !== 'object') {
 				output += ' ' + meta;
 			} else if (meta) {
+				output += '\n' + meta.map(data => {
+					return inspect(data, {
+						showHidden: false,
+						depth: this.options.depth,
+						colors: this.options.colorize,
+					});
+				})
+					.join('\n');
+
 				if (this.options.inlineMeta) {
-					output +=
-						' ' +
-						util
-							.inspect(meta, {
-								showHidden: false,
-								depth: this.options.depth,
-								colors: this.options.colorize,
-							})
-							.replace(/[\n\t]\s*/gm, ' ');
-				} else {
-					output += '\n' + util.inspect(meta, false, this.options.depth, this.options.colorize);
+					output = output.replace(/[\n\t]\s*/gm, ' ');
 				}
 			}
 		}
@@ -281,7 +328,7 @@ class PapertrailTransport extends Transport {
 			}
 
 			if (i === 1) {
-				gap = '    ';
+				gap = '   ';
 			}
 
 			// Strip escape characters (for colorization)
@@ -296,6 +343,7 @@ class PapertrailTransport extends Transport {
 				}) + '\r\n';
 		}
 
+
 		this.connection.write(msg, callback);
 	}
 
@@ -303,5 +351,3 @@ class PapertrailTransport extends Transport {
 		this.connection.close();
 	}
 }
-
-module.exports = { PapertrailConnection, PapertrailTransport };
