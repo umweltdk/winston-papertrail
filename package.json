@@ -6,7 +6,7 @@
     "Ken Perkins <ken.perkins@rackspace.com>",
     "Jeppe Enslev <jev@umwelt.dk> (https://github.com/Enslev)"
   ],
-  "main": "./lib/winston-papertrail.js",
+  "main": "./dist/winston-papertrail.js",
   "types": "./dist/winston-papertrail.d.ts",
   "repository": {
     "type": "git",
@@ -25,7 +25,8 @@
     "@types/triple-beam": "^1.3.0",
     "eslint": "^5.11.1",
     "mocha": "^2.0.1",
-    "should": "^4.3.0"
+    "should": "^4.3.0",
+    "typescript": "^3.6.4"
   },
   "dependencies": {
     "winston": ">=0.6.x",
@@ -36,8 +37,8 @@
   },
   "scripts": {
     "lint": "eslint .",
-	"test": "mocha test/*-test.js --spec",
-	"build": "tsc"
+    "test": "mocha test/*-test.js --spec",
+    "build": "rm -rf dist & tsc"
   },
   "prepublish": "tsc",
   "engines": {
