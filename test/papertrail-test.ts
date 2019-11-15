@@ -64,7 +64,7 @@ describe('connection tests', function() {
   });
 
   describe('valid connection over tls', function() {
-    let server, listener = function() {};
+    let server, listener = function(_) {};
 
     before(function(done) {
       server = tls.createServer({
@@ -390,7 +390,7 @@ describe('connection tests', function() {
 
 
   describe('valid connection over tcp', function () {
-    let server, listener = function () { };
+    let server, listener = function (_) { };
 
     before(function (done) {
       server = net.createServer(function (socket) {
